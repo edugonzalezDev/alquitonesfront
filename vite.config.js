@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react-swc'
 import tailwindcss from '@tailwindcss/vite'
 
 // https://vitejs.dev/config/
+
 export default defineConfig({
   plugins: [react(),
     tailwindcss()
@@ -16,6 +17,6 @@ export default defineConfig({
     host: '0.0.0.0',  // Expone el preview públicamente
     port:  4173,
     strictPort: true,
-    allowedHosts: ["alquitonesfront-dev.up.railway.app"]
+    allowedHosts: ["alquitonesfront-production.up.railway.app", "alquitonesfront-dev.up.railway.app"]
   }
 });

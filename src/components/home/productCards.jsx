@@ -1,62 +1,20 @@
 // productCards.jsx - corregido
 import { useState, useEffect } from "react";
-import { localDB } from "../../database/LocalDB";
 import { Link } from "react-router-dom";
 import PropTypes from 'prop-types';
 import ShareProduct from "./ShareProduct";
 
-const ProductCards = ({ products: propProducts }) => {
-    const [products, setProducts] = useState([]);
-    const [categories, setCategories] = useState([]);
+const ProductCards = ({ products: products, categories: categories, isLoading }) => {
     const [currentPage, setCurrentPage] = useState(1);
     const [selectedProduct, setSelectedProduct] = useState(null);
     const [likedProducts, setLikedProducts] = useState({});
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const productsPerPage = 10;
 
-    // Cargar productos desde props o cargar recomendados si no hay props
-    useEffect(() => {
-        if (propProducts && propProducts.length > 0) {
-            console.log("ProductCards: Usando productos recibidos por props:", propProducts.length);
-            setProducts(propProducts);
-            setCurrentPage(1); // Reset a primera página con nuevos productos
-        } else {
-            console.log("ProductCards: Cargando productos recomendados");
-            recomendedProducts();
-        }
-    }, [propProducts]);
-
-    const recomendedProducts = () => {
-        try {
-            const productsDB = localDB.getAllProducts();
-            if (productsDB.length > 0) {
-                // Obtener todos los productos en orden aleatorio
-                const randomProducts = productsDB.sort(() => Math.random() - 0.5);
-                setProducts(randomProducts);
-            }
-        } catch (error) {
-            console.error(error);
-        }
-    };
-
-    const getCategories = () => {
-        try {
-            const categoriesDB = localDB.getAllCategories();
-            setCategories(categoriesDB);
-        }
-        catch (error) {
-            console.error(error);
-        }
-    }
-
-    useEffect(() => {
-        getCategories();
-    }, []);
-
     const getCategoryName = (categoryId) => {
         const category = categories.find((category) => category.id === categoryId);
         return category?.name || "Sin categoría";
-    }
+    };
 
     // Formatear fecha para mostrar
     const formatDate = (dateStr) => {
@@ -116,9 +74,21 @@ const ProductCards = ({ products: propProducts }) => {
 
     return (
         <div className="flex flex-col gap-6">
-            {/* Grid de productos */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {currentProducts.length > 0 ? (
+                {isLoading ? (
+                    // 🔹 Renderiza el Skeleton mientras carga
+                    [...Array(6)].map((_, index) => (
+                        <div key={index} className="bg-gray-200 animate-pulse border border-gray-300 rounded-lg shadow-sm">
+                            <div className="h-48 w-96 mx-auto bg-gray-300 rounded-t-lg"></div>
+                            <div className="p-5 border-t border-gray-300">
+                                <div className="h-6 bg-gray-400 rounded w-3/4 mb-2"></div>
+                                <div className="h-4 bg-gray-300 rounded w-1/2 mb-3"></div>
+                                <div className="h-4 bg-gray-300 rounded w-full mb-2"></div>
+                                <div className="h-4 bg-gray-300 rounded w-5/6"></div>
+                            </div>
+                        </div>
+                    ))
+                ) : currentProducts.length > 0 ? (
                     currentProducts.map((product) => {
                         // Verificar si hay fechas seleccionadas basándonos en availabilityDetails
                         const hasDateFiltering = product.availabilityDetails !== undefined;
@@ -262,7 +232,7 @@ const ProductCards = ({ products: propProducts }) => {
                         disabled={currentPage === totalPages || totalPages === 0}
                         className="px-3 py-1 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50"
                     >
-                        <span className="material-symbols-outlined text-sm">navigate_next</span>
+                        <span className="material-symbols-outlined text-sm">chevron_right</span>
                     </button>
                     <button
                         onClick={() => paginate(totalPages)}
@@ -277,9 +247,9 @@ const ProductCards = ({ products: propProducts }) => {
     );
 };
 
-// Añadir propTypes para validar las props
 ProductCards.propTypes = {
-    products: PropTypes.array
+    products: PropTypes.array.isRequired,
+    isLoading: PropTypes.bool.isRequired,
 };
 
 export default ProductCards;

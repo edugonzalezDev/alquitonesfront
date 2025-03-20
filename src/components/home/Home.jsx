@@ -1,12 +1,13 @@
-// Home.jsx - modificado
 import { useState, useEffect } from 'react';
 import SearchBar from './search';
 import Category from './categorias';
 import ProductCards from './productCards';
-import { localDB } from '../../database/LocalDB';
+import { useInstrumentState } from "../../context/InstrumentContext";
+import { useCategoryState } from "../../context/CategoryContext";
 
 const Home = () => {
-    const [products, setProducts] = useState([]);
+    const { categories, loading: loadingCategories, error: errorCategories } = useCategoryState();
+    const { instruments, loading, error } = useInstrumentState();
     const [filteredProducts, setFilteredProducts] = useState(null);
     const [categoryFiltered, setCategoryFiltered] = useState(false);
     const [dateRange, setDateRange] = useState(null);
@@ -41,7 +42,12 @@ const Home = () => {
         setCategoryFiltered(true);
     };
 
-    // Crear un título dinámico basado en los filtros activos
+//     const renderTitle = () => {
+//         if (loading) return "Cargando instrumentos...";
+//         if (error) return error;
+//         if (filteredProducts) return categoryFiltered ? "Filtrado por categoría" : "Resultados de búsqueda";
+//         return "Recomendaciones";
+//     };
     const getFilterTitle = () => {
         if (!filteredProducts) return 'Recomendaciones';
         
@@ -72,19 +78,19 @@ const Home = () => {
     };
 
     return (
-        <>
-            <main className="max-w-5xl justify-center mx-auto">
-                <div className="bg-(--color-primary) py-4 mb-4">
-                    <SearchBar onSearch={handleSearch} />
-                </div>
-                <Category onFilterChange={handleCategoryFilter} />
-                
-                <div className="py-4 mb-4 flex flex-col mx-3 lg:mx-0">
-                    <h1 className="text-2xl font-bold text-(--color-secondary) mb-8">
-                        {getFilterTitle()}
-                    </h1>
-                    
-                    {/* Mostrar mensaje para fechas sin resultados */}
+        <main className="max-w-5xl justify-center mx-auto">
+            <div className="bg-(--color-primary) py-4 mb-4">
+                <SearchBar onSearch={handleSearch} products={instruments} />
+            </div>
+            <Category onFilterChange={handleCategoryFilter} products={instruments} categories={categories} loadingCategories={loadingCategories} />
+
+            <div className="py-4 mb-4 flex flex-col mx-3 lg:mx-0">
+                <h1 className="text-2xl font-bold text-(--color-secondary) mb-8">
+                    {getFilterTitle()}
+                </h1>
+
+               {/* Comprobación para mostrar mensaje cuando no hay productos */}
+{/* Mostrar mensaje para fechas sin resultados */}
                     {filteredProducts && filteredProducts.length === 0 && dateRange && (dateRange.startDate || dateRange.endDate) ? (
                         <div className="empty-category-message bg-gray-100 p-8 rounded-lg text-center">
                             <div className="empty-icon text-8xl text-gray-300 mb-4">
@@ -114,11 +120,11 @@ const Home = () => {
                             </p>
                         </div>
                     ) : (
-                        <ProductCards products={filteredProducts || products} />
-                    )}
-                </div>
-            </main>
-        </>
+    <ProductCards products={filteredProducts || instruments} categories={categories} isLoading={loading} />
+)}
+
+            </div>
+        </main>
     );
 };
 
