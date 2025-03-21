@@ -4,8 +4,6 @@ import styles from './Admin.module.css';
 import { Routes, Route, Link, Navigate } from 'react-router-dom';
 import Header from '../crossSections/header';
 import Footer from '../crossSections/footer';
-import { useInstrumentState, useInstrumentDispatch } from "../../context/InstrumentContext";
-import { useCategoryState, useCategoryDispatch } from "../../context/CategoryContext";
 
 // Dashboard component
 const Dashboard = () => (
@@ -22,24 +20,38 @@ const Dashboard = () => (
 
 // Instruments component (moved from main Admin component)
 const Instruments = () => {
+    const [instruments, setInstruments] = useState([]);
     const [modalOpen, setModalOpen] = useState(false);
     const [modalMode, setModalMode] = useState('create');
     const [currentInstrument, setCurrentInstrument] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [previews, setPreviews] = useState([]);
-    const { instruments, specifications, loading: instrumentsLoading, addInstrument, updateInstrument, deleteInstrument } = useInstrumentState();
-    const dispatch = useInstrumentDispatch();
 
     useEffect(() => {
-        if (searchTerm) {
-            const filteredInstruments = instruments.filter(instrument =>
-                instrument.name.toLowerCase().includes(searchTerm.toLowerCase())
+        loadInstruments();
+    }, [searchTerm]);
+
+    const loadInstruments = () => {
+        try {
+            // Obtener todos los productos sin paginación
+            const result = localDB.getProductsPaginated(
+                1,
+                Infinity, // Tamaño infinito para obtener todos
+                searchTerm,
+                false // Desactivar paginación
             );
-            dispatch({ type: "SET_INSTRUMENTS", payload: filteredInstruments });
-        } else {
-            dispatch({ type: "SET_INSTRUMENTS", payload: instruments });
+
+            setInstruments(result.products);
+        } catch (error) {
+            console.error('Error al cargar instrumentos:', error);
+            alert('Error al cargar los instrumentos');
         }
-    }, [searchTerm, instruments]);
+    };
+
+    const getProductCategory = (categoryId) => {
+        const categories = localDB.data.categories;
+        const category = categories.find(cat => cat.id === categoryId);
+        return category ? category.name : 'Sin categoria';
     };
 
     const handleSearch = (e) => {
@@ -64,11 +76,10 @@ const Instruments = () => {
         const form = e.target;
         const fileInput = document.getElementById('instrument-images');
         const images = Array.from(fileInput.files);
-        const imagesAdj = fileInput.files;
 
         // Validación de imágenes SOLO para creación
         if (modalMode === 'create' && (images.length < 1 || images.length > 6)) {
-            alert('Debes seleccionar entre 1 y 6 imágenes');
+            alert('Debes seleccionar entre 1 y 5 imágenes');
             return;
         }
 
@@ -85,6 +96,7 @@ const Instruments = () => {
                 : null;
 
             // Recopilar especificaciones
+            const specifications = localDB.getAllSpecifications();
             const productSpecifications = specifications
                 .map(spec => {
                     const value = form[`spec-${spec.id}`]?.value;
@@ -108,15 +120,14 @@ const Instruments = () => {
             };
 
             if (modalMode === 'create') {
-                await addInstrument(instrumentData, imagesAdj);
+                await localDB.createProduct(instrumentData);
                 alert('Instrumento creado con éxito');
             } else {
-                await updateInstrument(currentInstrument.id, instrumentData, imagesAdj);
-                // await apiService.updateInstrument(currentInstrument.id, instrumentData, imagesAdj);
-                // dispatch({ type: "UPDATE_INSTRUMENT", payload: { id: currentInstrument.id, ...instrumentData } });
+                await localDB.updateProduct(currentInstrument.id, instrumentData);
                 alert('Instrumento actualizado con éxito');
             }
 
+            loadInstruments();
             setModalOpen(false);
             setPreviews([]);
         } catch (error) {
@@ -133,9 +144,11 @@ const Instruments = () => {
         }
 
         try {
-            await deleteInstrument(instrument.id);
-            // await localDB.deleteProduct(instrument.id);
-            // dispatch({ type: "DELETE_INSTRUMENT", payload: instrument.id });
+            await localDB.deleteProduct(instrument.id);
+            // Update the local state immediately by filtering out the deleted instrument
+            setInstruments(prevInstruments =>
+                prevInstruments.filter(item => item.id !== instrument.id)
+            );
             alert('Instrumento eliminado exitosamente');
         } catch (error) {
             console.error('Error al eliminar instrumento:', error);
@@ -143,10 +156,15 @@ const Instruments = () => {
         }
     };
 
-    const getProductCategory = (categoryId) => {
-        const categories = localDB.data.categories;
-        const category = categories.find(cat => cat.id === categoryId);
-        return category ? category.name : 'Sin categoría';
+    const checkDuplicateName = (name) => {
+        const normalizedName = name.trim().toLowerCase();
+        // Permitir campo vacío en edición
+        if (modalMode === 'edit' && !normalizedName) return false;
+
+        return instruments.some(instrument =>
+            instrument.name.trim().toLowerCase() === normalizedName &&
+            (modalMode === 'create' || instrument.id !== currentInstrument?.id)
+        );
     };
 
     return (
@@ -197,9 +215,7 @@ const Instruments = () => {
                         </tr>
                     </thead>
                     <tbody>
-                        {instruments.map(instrument => {
-                            const status = (instrument.stock > 0 || instrument.status =='Disponible') ? 'Disponible' : 'No disponible';
-                            return (
+                        {instruments.map(instrument => (
                             <tr key={instrument.id}>
                                 <td>{instrument.id}</td>
                                 <td>
@@ -212,8 +228,8 @@ const Instruments = () => {
                                 <td>{instrument.name}</td>
                                 <td>{getProductCategory(instrument.categoryId)}</td>
                                 <td>
-                                    <span className={`${styles.statusBadge} ${styles[status.toLowerCase()]}`}>
-                                        {status}
+                                    <span className={`${styles.statusBadge} ${styles[instrument.status.toLowerCase()]}`}>
+                                        {instrument.status}
                                     </span>
                                 </td>
                                 <td>${instrument.pricePerDay.toFixed(2)}</td>
@@ -232,8 +248,7 @@ const Instruments = () => {
                                     </button>
                                 </td>
                             </tr>
-                            )
-                        })}
+                        ))}
                     </tbody>
                 </table>
             </div>
@@ -326,12 +341,12 @@ const Instruments = () => {
                                 <div className={styles.specificationsContainer}>
                                     {localDB.getAllSpecifications().map(spec => (
                                         <div key={spec.id} className="flex flex-col gap-1 bg-(--color-light) p-2 rounded-md">
-                                            <label className="font-semibold text-sm text-(--color-secondary)" htmlFor={`spec-${spec.id}`}>{spec.label}</label>
+                                            <label className="font-semibold text-sm text-(--color-secondary)" htmlFor={`spec-${spec.id}`}>{spec.name}</label>
                                             <input
                                                 type="text"
                                                 id={`spec-${spec.id}`}
                                                 name={`spec-${spec.id}`}
-                                                placeholder={`Valor para ${spec.label}`}
+                                                placeholder={`Valor para ${spec.name}`}
                                                 defaultValue={
                                                     currentInstrument?.specifications?.find(
                                                         s => s.specification.id === spec.id
@@ -394,25 +409,93 @@ const Instruments = () => {
 
 // Categories component - Solo con iconos predefinidos (sin imagen personalizada)
 const Categories = () => {
+    const [categories, setCategories] = useState([]);
     const [modalOpen, setModalOpen] = useState(false);
     const [modalMode, setModalMode] = useState('create');
     const [currentCategory, setCurrentCategory] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [previews, setPreviews] = useState([]);
-    const { categories, loading: categoriesLoading } = useCategoryState();
-    const dispatch = useCategoryDispatch();
+
+    // Estados para paginación
+    const [currentPage, setCurrentPage] = useState(1);
+    const [totalPages, setTotalPages] = useState(1);
+    const itemsPerPage = 10;
+    const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+    const [categoryToDelete, setCategoryToDelete] = useState(null);
+    const [successModalOpen, setSuccessModalOpen] = useState(false);
+    const [successMessage, setSuccessMessage] = useState('');
+    // Add this with your other state variables at the top of the component
+    const [deleteConfirmationValid, setDeleteConfirmationValid] = useState(false);
 
     useEffect(() => {
-        if (searchTerm) {
-            const filteredCategories = categories.filter(category =>
-                category.name.toLowerCase().includes(searchTerm.toLowerCase())
-            );
-            dispatch({ type: "SET_CATEGORIES", payload: filteredCategories });
-        } else {
-            dispatch({ type: "SET_CATEGORIES", payload: categories });
+        loadCategories();
+    }, [searchTerm, currentPage]);
 
+    // Mantener el efecto original para manejar la selección de iconos
+    useEffect(() => {
+        if (modalOpen) {
+            const iconClassSelect = document.getElementById('icon-class');
+            const iconPreviewContainer = document.querySelector(`.${styles.iconPreviewBox}`);
+
+            const updateIconPreview = () => {
+                if (!iconClassSelect || !iconPreviewContainer) return;
+
+                const selectedIcon = iconClassSelect.value;
+                iconPreviewContainer.querySelectorAll('i').forEach(icon => {
+                    icon.classList.remove(styles.selectedIcon);
+                    if (icon.classList.contains(selectedIcon)) {
+                        icon.classList.add(styles.selectedIcon);
+                    }
+                });
+            };
+
+            const handleIconSelection = (e) => {
+                if (!iconClassSelect) return;
+
+                if (e.target.classList.contains('fas')) {
+                    iconClassSelect.value = e.target.classList[1];
+                    updateIconPreview();
+                }
+            };
+
+            // Actualizar visibilidad inicial
+            updateIconPreview();
+
+            // Añadir event listeners
+            if (iconClassSelect) iconClassSelect.addEventListener('change', updateIconPreview);
+            if (iconPreviewContainer) iconPreviewContainer.addEventListener('click', handleIconSelection);
+
+            // Cleanup
+            return () => {
+                iconClassSelect?.removeEventListener('change', updateIconPreview);
+                iconPreviewContainer?.removeEventListener('click', handleIconSelection);
+            };
         }
-    }, [searchTerm, categories]);
+    }, [modalOpen]);
+
+    const loadCategories = () => {
+        try {
+            const allCategories = localDB.getAllCategories();
+            let filteredCategories = allCategories;
+
+            if (searchTerm) {
+                filteredCategories = allCategories.filter(category =>
+                    category.name.toLowerCase().includes(searchTerm.toLowerCase())
+                );
+            }
+
+            // Calcular paginación manualmente
+            const startIndex = (currentPage - 1) * itemsPerPage;
+            const endIndex = startIndex + itemsPerPage;
+            const paginatedCategories = filteredCategories.slice(startIndex, endIndex);
+
+            setCategories(paginatedCategories);
+            setTotalPages(Math.ceil(filteredCategories.length / itemsPerPage));
+        } catch (error) {
+            console.error('Error al cargar categorías:', error);
+            alert('Error al cargar las categorías');
+        }
+    };
 
     const handleSearch = (e) => {
         setSearchTerm(e.target.value);
@@ -449,14 +532,13 @@ const Categories = () => {
         try {
             if (modalMode === 'create') {
                 await localDB.createCategory(categoryData);
-                dispatch({ type: "ADD_CATEGORY", payload: categoryData });
-                alert('Categoría creada con éxito');
+                alert('categoria creada con éxito');
             } else {
                 await localDB.updateCategory(currentCategory.id, categoryData);
-                dispatch({ type: "UPDATE_CATEGORY", payload: { id: currentCategory.id, ...categoryData } });
-                alert('Categoría actualizada con éxito');
+                alert('categoria actualizada con éxito');
             }
-    
+
+            loadCategories();
             setModalOpen(false);
             setPreviews([]);
         } catch (error) {
@@ -503,6 +585,19 @@ const Categories = () => {
 
             // También podríamos usar un popup para errores
             alert(`Error: ${error.message}`);
+        }
+    };
+
+    // Manejadores de paginación
+    const handlePreviousPage = () => {
+        if (currentPage > 1) {
+            setCurrentPage(currentPage - 1);
+        }
+    };
+
+    const handleNextPage = () => {
+        if (currentPage < totalPages) {
+            setCurrentPage(currentPage + 1);
         }
     };
 
@@ -1131,12 +1226,12 @@ const Specifications = () => {
                                     ) : (
                                         <img
                                             src={specification.icon}
-                                            alt={`Icono de ${specification.label}`}
+                                            alt={`Icono de ${specification.name}`}
                                             className={styles.productImage}
                                         />
                                     )}
                                 </td>
-                                <td>{specification.label}</td>
+                                <td>{specification.name}</td>
                                 <td>{specification.description}</td>
                                 <td>{localDB.getProductsBySpecification(specification.id).length}</td>
                                 <td className="flex items-center gap-4 h-[83.33px]">
@@ -1206,7 +1301,7 @@ const Specifications = () => {
                                 <input
                                     type="text"
                                     id="specification-name"
-                                    defaultValue={currentSpecification?.label || ''}
+                                    defaultValue={currentSpecification?.name || ''}
                                     required
                                     className="rounded-md py-1.5 px-3 text-base text-gray-900 placeholder:text-gray-400 sm:text-sm/6 outline-[1.5px] -outline-offset-1 outline-[#CDD1DE] focus-within:outline-2 focus-within:-outline-offset-2 focus-within:outline-(--color-primary)"
                                     placeholder="Ingresa un nombre"
